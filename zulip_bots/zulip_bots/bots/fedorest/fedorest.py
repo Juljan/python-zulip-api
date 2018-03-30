@@ -45,7 +45,7 @@ class FedorestdHandler(object):
                 matches = re.findall(regex, url)
                 if matches:
                     (week, year) = matches[0]
-                    content += "* [**"+year + "-"+week + "**](" + GOOGLE_SITE_BASE + url + ")\n"
+                    content += "* ["+year + "-"+week + "](" + GOOGLE_SITE_BASE + url + ")\n"
 
         return content
 
