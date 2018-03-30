@@ -33,7 +33,7 @@ class FedorestdHandler(object):
 
         content = ""
 
-        content += "Voici les menus disponibles. Nous sommes en semaine {} - {} : \n".format(current_year, current_week)
+        content += "Voici les menus disponibles concoctés par les chefs Fedorest. Nous sommes en semaine {}-{} : \n".format(current_year, current_week)
 
         link_cells = soup.find_all("td", {"class": "td-file"})
         regex = r"noga_fr_(\d+)_(\d+)\.pdf"
@@ -45,7 +45,7 @@ class FedorestdHandler(object):
                 matches = re.findall(regex, url)
                 if matches:
                     (week, year) = matches[0]
-                    content += "* ["+year + "-"+week + "](" + GOOGLE_SITE_BASE + url + ")\n"
+                    content += "* [**"+year + "-"+week + "**](" + GOOGLE_SITE_BASE + url + ")\n"
 
         return content
 
@@ -55,8 +55,12 @@ class FedorestdHandler(object):
         content = message['content']
        
         if content.strip() == 'list':
-            bot_handler.send_reply(message, self.get_menus_list())
-            return
+            try:
+                bot_handler.send_reply(message, self.get_menus_list())
+                return
+            except Exception as inst:
+                bot_handler.send_reply(message, "Une erreur est survenue : " + inst)
+                return
 
 
         bot_handler.send_reply(message, self.get_help_message())
