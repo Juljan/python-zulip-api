@@ -13,7 +13,7 @@ import itertools
 def version():
     # type: () -> str
     version_py = os.path.join(os.path.dirname(__file__), "zulip", "__init__.py")
-    with open(version_py) as in_handle:
+    with open(version_py, encoding="utf-8") as in_handle:
         version_line = next(itertools.dropwhile(lambda x: not x.startswith("__version__"),
                                                 in_handle))
     version = version_line.split('=')[-1].strip().replace('"', '')
