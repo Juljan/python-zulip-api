@@ -1,0 +1,8 @@
+beautifulsoup4
+requests
+isoweek
+lxml
+typing
+datetime
+PyPDF2
+pdftotext
