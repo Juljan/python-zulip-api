@@ -1,13 +1,12 @@
-from zulip_bots.test_lib import BotTestCase
+from zulip_bots.test_lib import BotTestCase, DefaultTests
 from zulip_bots.game_handler import GameInstance
 
-from contextlib import contextmanager
-from mock import MagicMock, patch
+from mock import patch
 
 from typing import Any, Dict, List
 
 
-class TestGameHandlerBot(BotTestCase):
+class TestGameHandlerBot(BotTestCase, DefaultTests):
     bot_name = 'game_handler_bot'
 
     def make_request_message(

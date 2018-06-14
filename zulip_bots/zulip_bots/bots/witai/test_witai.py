@@ -1,9 +1,8 @@
 from unittest.mock import patch
-import sys
 from typing import Dict, Any, Optional
-from zulip_bots.test_lib import BotTestCase, get_bot_message_handler, StubBotHandler
+from zulip_bots.test_lib import BotTestCase, DefaultTests, get_bot_message_handler, StubBotHandler
 
-class TestWitaiBot(BotTestCase):
+class TestWitaiBot(BotTestCase, DefaultTests):
     bot_name = 'witai'
 
     MOCK_CONFIG_INFO = {
@@ -23,15 +22,11 @@ class TestWitaiBot(BotTestCase):
     }
 
     def test_normal(self) -> None:
-        with self.mock_config_info(self.MOCK_CONFIG_INFO):
-            get_bot_message_handler(self.bot_name).initialize(StubBotHandler())
+        with patch('zulip_bots.bots.witai.witai.get_handle', return_value=mock_handle):
+            with self.mock_config_info(self.MOCK_CONFIG_INFO):
+                get_bot_message_handler(self.bot_name).initialize(StubBotHandler())
 
-            with patch('wit.Wit.message') as message:
-                message.return_value = self.MOCK_WITAI_RESPONSE
-
-                with patch('zulip_bots.bots.witai.witai.get_handle') as handler:
-                    handler.return_value = mock_handle
-
+                with patch('wit.Wit.message', return_value=self.MOCK_WITAI_RESPONSE):
                     self.verify_reply(
                         'What is your favorite food?',
                         'pizza'
@@ -39,15 +34,10 @@ class TestWitaiBot(BotTestCase):
 
     # This overrides the default one in `BotTestCase`.
     def test_bot_responds_to_empty_message(self) -> None:
-        with self.mock_config_info(self.MOCK_CONFIG_INFO):
-            get_bot_message_handler(self.bot_name).initialize(StubBotHandler())
-
-            with patch('wit.Wit.message') as message:
-                message.return_value = self.MOCK_WITAI_RESPONSE
-
-                with patch('zulip_bots.bots.witai.witai.get_handle') as handler:
-                    handler.return_value = mock_handle
-
+        with patch('zulip_bots.bots.witai.witai.get_handle', return_value=mock_handle):
+            with self.mock_config_info(self.MOCK_CONFIG_INFO):
+                get_bot_message_handler(self.bot_name).initialize(StubBotHandler())
+                with patch('wit.Wit.message', return_value=self.MOCK_WITAI_RESPONSE):
                     self.verify_reply('', 'Qwertyuiop!')
 
 def mock_handle(res: Dict[str, Any]) -> Optional[str]:

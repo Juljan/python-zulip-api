@@ -6,11 +6,11 @@ from __future__ import print_function
 import os
 import sys
 import glob
-import pip
+import subprocess
 if False:
     from typing import Any, Dict, Optional
 
-ZULIP_BOTS_VERSION = "0.4.1"
+ZULIP_BOTS_VERSION = "0.5.0"
 IS_PYPA_PACKAGE = False
 
 
@@ -52,6 +52,9 @@ setuptools_info = dict(
     install_requires=[
         'pip',
         'zulip',
+        'html2text',
+        'lxml',
+        'BeautifulSoup4',
     ],
 )
 
@@ -95,14 +98,3 @@ except ImportError:
     package_info['packages'] = package_list
 
 setup(**package_info)
-
-# Install all requirements for all bots. get_bot_paths()
-# has requirements that must be satisfied prior to calling
-# it by setup().
-current_dir = os.path.dirname(os.path.abspath(__file__))
-bots_dir = os.path.join(current_dir, "zulip_bots", "bots")
-bots_subdirs = map(lambda d: os.path.abspath(d), glob.glob(bots_dir + '/*'))
-bot_paths = filter(lambda d: os.path.isdir(d), bots_subdirs)
-for bot_path in bot_paths:
-    req_path = os.path.join(bot_path, 'requirements.txt')
-    rcode = pip.main(['install', '-r', req_path, '--quiet'])

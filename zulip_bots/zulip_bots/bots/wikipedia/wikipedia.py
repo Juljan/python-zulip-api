@@ -40,18 +40,22 @@ class WikipediaHandler(object):
     def get_bot_wiki_response(self, message: Dict[str, str], bot_handler: Any) -> Optional[str]:
         '''This function returns the URLs of the requested topic.'''
 
-        help_text = 'Please enter your search term after @mention-bot'
+        help_text = 'Please enter your search term after {}'
 
         # Checking if the link exists.
         query = message['content']
         if query == '':
-            return help_text
+            return help_text.format(bot_handler.identity().mention)
 
-        query_wiki_link = ('https://en.wikipedia.org/w/api.php?action=query&'
-                           'list=search&srsearch=%s&format=json'
-                           % (urllib.parse.quote(query),))
+        query_wiki_url = 'https://en.wikipedia.org/w/api.php'
+        query_wiki_params = dict(
+            action='query',
+            list='search',
+            srsearch=query,
+            format='json'
+        )
         try:
-            data = requests.get(query_wiki_link)
+            data = requests.get(query_wiki_url, params=query_wiki_params)
 
         except requests.exceptions.RequestException:
             logging.error('broken link')

@@ -1,14 +1,12 @@
-from zulip_bots.test_lib import BotTestCase, StubBotHandler, read_bot_fixture_data
-import simple_salesforce
+from zulip_bots.test_lib import BotTestCase, DefaultTests, StubBotHandler, read_bot_fixture_data
 from simple_salesforce.exceptions import SalesforceAuthenticationFailed
 from contextlib import contextmanager
 from unittest.mock import patch
-from typing import Any, Dict
-import logging
+from typing import Any, Dict, Iterator
 
 
 @contextmanager
-def mock_salesforce_query(test_name: str, bot_name: str) -> Any:
+def mock_salesforce_query(test_name: str, bot_name: str) -> Iterator[None]:
     response_data = read_bot_fixture_data(bot_name, test_name)
     sf_response = response_data.get('response')
 
@@ -18,7 +16,7 @@ def mock_salesforce_query(test_name: str, bot_name: str) -> Any:
 
 
 @contextmanager
-def mock_salesforce_auth(is_success: bool) -> Any:
+def mock_salesforce_auth(is_success: bool) -> Iterator[None]:
     if is_success:
         with patch('simple_salesforce.api.Salesforce.__init__') as mock_sf_init:
             mock_sf_init.return_value = None
@@ -33,7 +31,7 @@ def mock_salesforce_auth(is_success: bool) -> Any:
 
 
 @contextmanager
-def mock_salesforce_commands_types() -> Any:
+def mock_salesforce_commands_types() -> Iterator[None]:
     with patch('zulip_bots.bots.salesforce.utils.commands', mock_commands), \
             patch('zulip_bots.bots.salesforce.utils.object_types', mock_object_types):
         yield
@@ -107,7 +105,7 @@ mock_object_types = {
 }
 
 
-class TestSalesforceBot(BotTestCase):
+class TestSalesforceBot(BotTestCase, DefaultTests):
     bot_name = "salesforce"  # type: str
 
     def _test(self, test_name: str, message: str, response: str, auth_success: bool=True) -> None:

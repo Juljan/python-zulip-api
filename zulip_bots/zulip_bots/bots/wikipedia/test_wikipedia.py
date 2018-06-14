@@ -1,7 +1,7 @@
-from zulip_bots.test_lib import BotTestCase
+from zulip_bots.test_lib import BotTestCase, DefaultTests
 from zulip_bots.request_test_lib import mock_request_exception
 
-class TestWikipediaBot(BotTestCase):
+class TestWikipediaBot(BotTestCase, DefaultTests):
     bot_name = "wikipedia"
 
     def test_bot(self) -> None:
@@ -52,7 +52,7 @@ class TestWikipediaBot(BotTestCase):
 
         # Empty query, no request made to the Internet.
         bot_request = ''
-        bot_response = "Please enter your search term after @mention-bot"
+        bot_response = "Please enter your search term after @**test-bot**"
         self.verify_reply(bot_request, bot_response)
 
         # Incorrect status code

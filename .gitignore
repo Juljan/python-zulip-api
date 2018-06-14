@@ -41,11 +41,15 @@ zulip_bots/MANIFEST.in
 # Bot configuration files
 zuliprc
 .zuliprc
-flaskbotrc
-.flaskbotrc
+botserverrc
+.botserverrc
 
 # mypy
 .mypy_cache
 
 # zip files for bot deployment
 .bots
+
+# Pycharm
+\.DS_Store
+\.idea/

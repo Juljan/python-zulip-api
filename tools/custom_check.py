@@ -178,7 +178,14 @@ def build_custom_checkers(by_lang):
                         ' provided by the bots framework to access the filesystem.',
          'include_only': set(['zulip_bots/zulip_bots/bots/'])},
         {'pattern': 'pprint',
-         'description': 'Used pprint, which is most likely a debugging leftover. For user output, use print().'}
+         'description': 'Used pprint, which is most likely a debugging leftover. For user output, use print().'},
+        {'pattern': '\(BotTestCase\)',
+         'bad_lines': ['class TestSomeBot(BotTestCase):'],
+         'description': 'Bot test cases should directly inherit from BotTestCase *and* DefaultTests.'},
+        {'pattern': '\(DefaultTests, BotTestCase\)',
+         'bad_lines': ['class TestSomeBot(DefaultTests, BotTestCase):'],
+         'good_lines': ['class TestSomeBot(BotTestCase, DefaultTests):'],
+         'description': 'Bot test cases should inherit from BotTestCase before DefaultTests.'},
     ]) + whitespace_rules
     bash_rules = [
         {'pattern': '#!.*sh [-xe]',
@@ -194,6 +201,8 @@ def build_custom_checkers(by_lang):
          'description': "Organization is spelled with a z"},
         {'pattern': '!!! warning',
          'description': "!!! warning is invalid; it's spelled '!!! warn'"},
+        {'pattern': '[^-_]botserver(?!rc)|bot server',
+         'description': "Use Botserver instead of botserver or Botserver."},
     ]  # type: RuleList
     json_rules = []  # type: RuleList # fix newlines at ends of files
     # It is okay that json_rules is empty, because the empty list

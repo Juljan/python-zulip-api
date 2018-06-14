@@ -1,13 +1,12 @@
 # See readme.md for instructions on running this code.
 
-from typing import Any
 import simple_salesforce
 from typing import Dict, Any, List
 import getpass
 import re
 import logging
 import json
-from zulip_bots.bots.salesforce.utils import *
+from zulip_bots.bots.salesforce.utils import commands, object_types, link_query, default_query
 
 base_help_text = '''Salesforce bot
 This bot can do simple salesforce query requests
@@ -74,7 +73,7 @@ def format_result(
     return output
 
 
-def query_salesforce(arg: str, sf: Any, command: Dict[str, Any]) -> str:
+def query_salesforce(arg: str, salesforce: simple_salesforce.Salesforce, command: Dict[str, Any]) -> str:
     arg = arg.strip()
     qarg = arg.split(' -', 1)[0]
     split_args = []  # type: List[str]
@@ -92,7 +91,7 @@ def query_salesforce(arg: str, sf: Any, command: Dict[str, Any]) -> str:
     if 'query' in command.keys():
         query = command['query']
     object_type = object_types[command['object']]
-    res = sf.query(query.format(
+    res = salesforce.query(query.format(
         object_type['fields'], object_type['table'], qarg, limit_num))
     exclude_keys = []  # type: List[str]
     if 'exclude_keys' in command.keys():
@@ -137,7 +136,7 @@ class SalesforceHandler(object):
 
     def get_salesforce_response(self, content: str) -> str:
         content = content.strip()
-        if content is None or content == 'help':
+        if content is '' or content == 'help':
             return get_help_text()
         if content.startswith('http') and 'force' in content:
             return get_salesforce_link_details(content, self.sf)
@@ -165,7 +164,7 @@ class SalesforceHandler(object):
         except simple_salesforce.exceptions.SalesforceAuthenticationFailed as err:
             bot_handler.quit('Failed to log in to Salesforce. {} {}'.format(err.code, err.message))
 
-    def handle_message(self, message: Any, bot_handler: Any) -> None:
+    def handle_message(self, message: Dict[str, Any], bot_handler: Any) -> None:
         try:
             bot_response = self.get_salesforce_response(message['content'])
             bot_handler.send_reply(message, bot_response)

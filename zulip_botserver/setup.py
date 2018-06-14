@@ -3,12 +3,11 @@
 
 from __future__ import print_function
 
-import os
 import sys
 if False:
     from typing import Any, Dict, Optional
 
-ZULIP_BOTSERVER_VERSION = "0.4.1"
+ZULIP_BOTSERVER_VERSION = "0.5.0"
 
 # We should be installable with either setuptools or distutils.
 package_info = dict(
@@ -27,7 +26,7 @@ package_info = dict(
     url='https://www.zulip.org/',
     entry_points={
         'console_scripts': [
-            'zulip-bot-server=zulip_botserver.server:main',
+            'zulip-botserver=zulip_botserver.server:main',
         ],
     },
     test_suite='tests',

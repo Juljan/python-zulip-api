@@ -42,7 +42,7 @@ import logging
 import six
 from typing import Any, Callable, Dict, Iterable, IO, List, Mapping, Optional, Text, Tuple, Union
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +271,20 @@ def get_default_config_filename():
                          "  mv ~/.humbugrc ~/.zuliprc\n")
     return config_file
 
+def validate_boolean_field(field):
+    # type: (Optional[Text]) -> Union[bool, None]
+    if not isinstance(field, str):
+        return None
+
+    field = field.lower()
+
+    if field == "true":
+        return True
+    elif field == "false":
+        return False
+    else:
+        return None
+
 class ZulipError(Exception):
     pass
 
@@ -286,7 +300,7 @@ class Client(object):
                  site=None, client=None,
                  cert_bundle=None, insecure=None,
                  client_cert=None, client_cert_key=None):
-        # type: (Optional[str], Optional[str], Optional[str], bool, bool, Optional[str], Optional[str], Optional[str], bool, Optional[str], Optional[str]) -> None
+        # type: (Optional[str], Optional[str], Optional[str], bool, bool, Optional[str], Optional[str], Optional[str], Optional[bool], Optional[str], Optional[str]) -> None
         if client is None:
             client = _default_client()
 
@@ -308,7 +322,19 @@ class Client(object):
             client_cert_key = os.environ.get("ZULIP_CERT_KEY")
         if cert_bundle is None:
             cert_bundle = os.environ.get("ZULIP_CERT_BUNDLE")
+        if insecure is None:
+            # Be quite strict about what is accepted so that users don't
+            # disable security unintentionally.
+            insecure_setting = os.environ.get('ZULIP_ALLOW_INSECURE')
 
+            if insecure_setting is not None:
+                insecure = validate_boolean_field(insecure_setting)
+
+                if insecure is None:
+                    raise ZulipError("The ZULIP_ALLOW_INSECURE environment "
+                                     "variable is set to '{}', it must be "
+                                     "'true' or 'false'"
+                                     .format(insecure_setting))
         if config_file is None:
             config_file = get_default_config_filename()
 
@@ -331,14 +357,15 @@ class Client(object):
             if insecure is None and config.has_option("api", "insecure"):
                 # Be quite strict about what is accepted so that users don't
                 # disable security unintentionally.
-                insecure_setting = config.get("api", "insecure").lower()
-                if insecure_setting == "true":
-                    insecure = True
-                elif insecure_setting == "false":
-                    insecure = False
-                else:
-                    raise ZulipError("insecure is set to '%s', it must be 'true' or 'false' if it is used in %s"
-                                     % (insecure_setting, config_file))
+                insecure_setting = config.get('api', 'insecure')
+
+                insecure = validate_boolean_field(insecure_setting)
+
+                if insecure is None:
+                    raise ZulipError("insecure is set to '{}', it must be "
+                                     "'true' or 'false' if it is used in {}"
+                                     .format(insecure_setting, config_file))
+
         elif None in (api_key, email):
             raise ConfigNotFoundError("api_key or email not specified and file %s does not exist"
                                       % (config_file,))
@@ -365,6 +392,9 @@ class Client(object):
         self.client_name = client
 
         if insecure:
+            logger.warning('Insecure mode enabled. The server\'s SSL/TLS '
+                           'certificate will not be validated, making the '
+                           'HTTPS connection potentially insecure')
             self.tls_verification = False  # type: Union[bool, str]
         elif cert_bundle is not None:
             if not os.path.isfile(cert_bundle):
@@ -390,7 +420,7 @@ class Client(object):
         self.client_cert = client_cert
         self.client_cert_key = client_cert_key
 
-        self.session = None  # type: Union[None, requests.Session]
+        self.session = None  # type: Optional[requests.Session]
 
         self.has_connected = False
 
@@ -414,7 +444,7 @@ class Client(object):
         session.auth = requests.auth.HTTPBasicAuth(self.email, self.api_key)
         session.verify = self.tls_verification  # type: ignore # https://github.com/python/typeshed/pull/1504
         session.cert = client_cert
-        session.headers = {"User-agent": self.get_user_agent()}
+        session.headers.update({"User-agent": self.get_user_agent()})
         self.session = session
 
     def get_user_agent(self):
@@ -443,7 +473,7 @@ class Client(object):
         )
 
     def do_api_query(self, orig_request, url, method="POST", longpolling=False, files=None):
-        # type: (Mapping[str, Any], str, str, bool, List[IO[Any]]) -> Dict[str, Any]
+        # type: (Mapping[str, Any], str, str, bool, Optional[List[IO[Any]]]) -> Dict[str, Any]
         if files is None:
             files = []
 
@@ -577,15 +607,19 @@ class Client(object):
                     "status_code": res.status_code}
 
     def call_endpoint(self, url=None, method="POST", request=None, longpolling=False, files=None):
-        # type: (str, str, Dict[str, Any], bool, List[IO[Any]]) -> Dict[str, Any]
+        # type: (Optional[str], str, Optional[Dict[str, Any]], bool, Optional[List[IO[Any]]]) -> Dict[str, Any]
         if request is None:
             request = dict()
+        marshalled_request = {}
+        for (k, v) in request.items():
+            if v is not None:
+                marshalled_request[k] = v
         versioned_url = API_VERSTRING + (url if url is not None else "")
-        return self.do_api_query(request, versioned_url, method=method,
+        return self.do_api_query(marshalled_request, versioned_url, method=method,
                                  longpolling=longpolling, files=files)
 
     def call_on_each_event(self, callback, event_types=None, narrow=None):
-        # type: (Callable[[Any], None], Optional[List[str]], Any) -> None
+        # type: (Callable[[Dict[str, Any]], None], Optional[List[str]], Optional[List[List[str]]]) -> None
         if narrow is None:
             narrow = []
 
@@ -645,9 +679,9 @@ class Client(object):
                 callback(event)
 
     def call_on_each_message(self, callback):
-        # type: (Callable[[Any], None]) -> None
+        # type: (Callable[[Dict[str, Any]], None]) -> None
         def event_callback(event):
-            # type: (Dict[str, str]) -> None
+            # type: (Dict[str, Any]) -> None
             if event['type'] == 'message':
                 callback(event['message'])
         self.call_on_each_event(event_callback, ['message'])
@@ -696,7 +730,7 @@ class Client(object):
         )
 
     def register(self, event_types=None, narrow=None, **kwargs):
-        # type: (Iterable[str], Any, **Any) -> Dict[str, Any]
+        # type: (Optional[Iterable[str]], Optional[List[List[str]]], **Any) -> Dict[str, Any]
         '''
             Example usage:
 
@@ -708,9 +742,6 @@ class Client(object):
 
         if narrow is None:
             narrow = []
-
-        if event_types is None:
-            event_types = []
 
         request = dict(
             event_types=event_types,
@@ -742,7 +773,7 @@ class Client(object):
         )
 
     def get_profile(self, request=None):
-        # type: (Dict[str, Any]) -> Dict[str, Any]
+        # type: (Optional[Dict[str, Any]]) -> Dict[str, Any]
         '''
             Example usage:
 
@@ -780,7 +811,7 @@ class Client(object):
         )
 
     def get_members(self, request=None):
-        # type: (Dict[str, Any]) -> Dict[str, Any]
+        # type: (Optional[Dict[str, Any]]) -> Dict[str, Any]
         '''
             See examples/list-members for example usage.
         '''
@@ -791,7 +822,7 @@ class Client(object):
         )
 
     def list_subscriptions(self, request=None):
-        # type: (Dict[str, Any]) -> Dict[str, Any]
+        # type: (Optional[Dict[str, Any]]) -> Dict[str, Any]
         '''
             See examples/list-subscriptions for example usage.
         '''
@@ -816,11 +847,14 @@ class Client(object):
             request=request,
         )
 
-    def remove_subscriptions(self, streams, principals=[]):
+    def remove_subscriptions(self, streams, principals=None):
         # type: (Iterable[str], Optional[Iterable[str]]) -> Dict[str, Any]
         '''
             See examples/unsubscribe for example usage.
         '''
+        if principals is None:
+            principals = []
+
         request = dict(
             subscriptions=streams,
             principals=principals
@@ -844,6 +878,16 @@ class Client(object):
             request=None,
         )
 
+    def get_stream_topics(self, stream_id):
+        # type: (int) -> Dict[str, Any]
+        '''
+            See examples/get-stream-topics for example usage.
+        '''
+        return self.call_endpoint(
+            url='users/me/{}/topics'.format(stream_id),
+            method='GET'
+        )
+
     def get_subscribers(self, **request):
         # type: (**Any) -> Dict[str, Any]
         '''
@@ -862,7 +906,7 @@ class Client(object):
         )
 
     def render_message(self, request=None):
-        # type: (Dict[str, Any]) -> Dict[str, Any]
+        # type: (Optional[Dict[str, Any]]) -> Dict[str, Any]
         '''
             Example usage:
 
@@ -876,7 +920,7 @@ class Client(object):
         )
 
     def create_user(self, request=None):
-        # type: (Dict[str, Any]) -> Dict[str, Any]
+        # type: (Optional[Dict[str, Any]]) -> Dict[str, Any]
         '''
             See examples/create-user for example usage.
         '''

@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 from zulip_bots.bots.trello.trello import TrelloHandler
-from zulip_bots.test_lib import BotTestCase
+from zulip_bots.test_lib import BotTestCase, DefaultTests
 from zulip_bots.test_lib import StubBotHandler
 
 mock_config = {
@@ -10,7 +10,7 @@ mock_config = {
     'user_name': 'TEST'
 }
 
-class TestTrelloBot(BotTestCase):
+class TestTrelloBot(BotTestCase, DefaultTests):
     bot_name = "trello"  # type: str
 
     def test_bot_responds_to_empty_message(self) -> None:
@@ -27,7 +27,8 @@ class TestTrelloBot(BotTestCase):
 
     def test_bot_quit_with_invalid_config(self) -> None:
         with self.mock_config_info(mock_config), self.assertRaises(StubBotHandler.BotQuitException):
-            TrelloHandler().initialize(StubBotHandler())
+            with self.mock_http_conversation('invalid_key'):
+                TrelloHandler().initialize(StubBotHandler())
 
     def test_invalid_command(self) -> None:
         with self.mock_config_info(mock_config), patch('requests.get'):
@@ -48,35 +49,35 @@ class TestTrelloBot(BotTestCase):
     def test_get_all_boards_command(self) -> None:
         with self.mock_config_info(mock_config), patch('requests.get'):
             with self.mock_http_conversation('get_all_boards'):
-                self.verify_reply('get-all-boards', '**Boards:** \n')
+                self.verify_reply('get-all-boards', '**Boards:**\n')
 
             with self.mock_http_conversation('get_board_descs'):
                 bot_instance = TrelloHandler()
                 bot_instance.initialize(StubBotHandler)
 
-                self.assertEqual(bot_instance.get_board_descs(['TEST']), '1.[TEST](TEST) (`TEST`)\n')
+                self.assertEqual(bot_instance.get_board_descs(['TEST']), '1.[TEST](TEST) (`TEST`)')
 
     def test_get_all_cards_command(self) -> None:
         with self.mock_config_info(mock_config), patch('requests.get'):
             with self.mock_http_conversation('get_cards'):
-                self.verify_reply('get-all-cards TEST', '**Cards:** \n1. [TEST](TEST) (`TEST`)\n')
+                self.verify_reply('get-all-cards TEST', '**Cards:**\n1. [TEST](TEST) (`TEST`)')
 
     def test_get_all_checklists_command(self) -> None:
         with self.mock_config_info(mock_config), patch('requests.get'):
             with self.mock_http_conversation('get_checklists'):
-                self.verify_reply('get-all-checklists TEST', '**Checklists:** \n'
+                self.verify_reply('get-all-checklists TEST', '**Checklists:**\n'
                                                              '1. `TEST`:\n'
                                                              ' * [X] TEST_1\n * [X] TEST_2\n'
-                                                             ' * [-] TEST_3\n * [-] TEST_4\n')
+                                                             ' * [-] TEST_3\n * [-] TEST_4')
 
     def test_get_all_lists_command(self) -> None:
         with self.mock_config_info(mock_config), patch('requests.get'):
             with self.mock_http_conversation('get_lists'):
-                self.verify_reply('get-all-lists TEST', ('**Lists:** \n'
+                self.verify_reply('get-all-lists TEST', ('**Lists:**\n'
                                                          '1. TEST_A\n'
                                                          '  * TEST_1\n'
                                                          '2. TEST_B\n'
-                                                         '  * TEST_2\n'))
+                                                         '  * TEST_2'))
 
     def test_command_exceptions(self) -> None:
         """Add appropriate tests here for all additional commands with try/except blocks.

@@ -9,23 +9,9 @@ import argparse
 import glob
 import unittest
 from unittest import TestCase, TestSuite
+import pytest
 
-def load_tests_from_modules(names, template):
-    loader = unittest.defaultTestLoader
-    test_suites = []
-    for name in names:
-        module = import_module(template.format(name=name))
-        test_suites.append(loader.loadTestsFromModule(module))
-
-    return test_suites
-
-def load_all_tests():
-    loader = unittest.defaultTestLoader
-    # Codecov seems to work only when using loader.discover. It failed to capture line executions
-    # for functions like loader.loadTestFromModule or loader.loadTestFromNames.
-    return loader.discover('zulip_bots')
-
-def parse_args(available_bots):
+def parse_args():
     description = """
 Script to run test_<bot_name>.py files in the
 zulip_bot/zulip_bots/bots/<bot_name> directories.
@@ -61,6 +47,18 @@ the tests for xkcd and wikipedia bots):
                         nargs='*',
                         default=[],
                         help='bot(s) to exclude')
+    parser.add_argument('--error-on-no-init',
+                        default=False,
+                        action="store_true",
+                        help="whether to exit if a bot has tests which won't run due to no __init__.py")
+    parser.add_argument('--pytest', '-p',
+                        default=False,
+                        action='store_true',
+                        help="run tests with pytest")
+    parser.add_argument('--verbose', '-v',
+                        default=False,
+                        action='store_true',
+                        help='show verbose output (with pytest)')
     return parser.parse_args()
 
 
@@ -74,7 +72,8 @@ def main():
 
     # get only the names of bots that have tests
     available_bots = map(lambda path: basename(dirname(path)), test_modules)
-    options = parse_args(available_bots)
+
+    options = parse_args()
 
     if options.coverage:
         import coverage
@@ -84,34 +83,50 @@ def main():
         cov.start()
 
     if options.bots_to_test:
-        bots_to_test = filter(lambda bot: bot not in options.exclude,
-                              options.bots_to_test)
-        test_suites = load_tests_from_modules(
-            bots_to_test,
-            template='zulip_bots.bots.{name}.test_{name}')
+        specified_bots = options.bots_to_test
     else:
-        test_suites = load_all_tests()
+        specified_bots = available_bots
 
-    def filter_tests(tests):
-        # type: (Union[TestSuite, TestCase]) -> TestSuite
-        filtered_tests = TestSuite()
-        for test in tests:
-            if isinstance(test, TestCase):
-                # Exclude test base class from being tested.
-                if test.__class__.__name__ != 'BotTestCase':
-                    filtered_tests.addTest(test)
-            else:
-                filtered_tests.addTest(filter_tests(test))
-        return filtered_tests
-    test_suites = filter_tests(test_suites)
+    bots_to_test = filter(lambda bot: bot not in options.exclude, specified_bots)
 
-    suite = unittest.TestSuite(test_suites)
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-    if result.failures or result.errors:
-        sys.exit(1)
+    if options.pytest:
+        excluded_bots = ['merels']
+        pytest_bots_to_test = sorted([bot for bot in bots_to_test if bot not in excluded_bots])
+        pytest_options = [
+            '-s',    # show output from tests; this hides the progress bar though
+            '-x',    # stop on first test failure
+            '--ff',  # runs last failure first
+        ]
+        pytest_options += (['-v'] if options.verbose else [])
+        os.chdir(bots_dir)
+        result = pytest.main(pytest_bots_to_test + pytest_options)
+        if result != 0:
+            sys.exit(1)
+        failures = False
+    else:
+        # Codecov seems to work only when using loader.discover. It failed to
+        # capture line executions for functions like loader.loadTestFromModule
+        # or loader.loadTestFromNames.
+        top_level = "zulip_bots/zulip_bots/bots/"
+        loader = unittest.defaultTestLoader
+        test_suites = []
+        for name in bots_to_test:
+            try:
+                test_suites.append(loader.discover(top_level + name, top_level_dir=top_level))
+            except ImportError as exception:
+                print(exception)
+                print("This likely indicates that you need a '__init__.py' file in your bot directory.")
+                if options.error_on_no_init:
+                    sys.exit(1)
 
-    if not result.failures and options.coverage:
+        suite = unittest.TestSuite(test_suites)
+        runner = unittest.TextTestRunner(verbosity=2)
+        result = runner.run(suite)
+        failures = result.failures
+        if failures or result.errors:
+            sys.exit(1)
+
+    if not failures and options.coverage:
         cov.stop()
         cov.data_suffix = False  # Disable suffix so that filename is .coverage
         cov.save()

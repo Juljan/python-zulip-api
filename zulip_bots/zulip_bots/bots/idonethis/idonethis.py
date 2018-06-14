@@ -1,9 +1,8 @@
-import sys
 import requests
 import logging
 import re
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional, List
 
 API_BASE_URL = "https://beta.idonethis.com/api/v2"
 
@@ -25,12 +24,15 @@ class UnknownCommandSyntax(Exception):
 class UnspecifiedProblemException(Exception):
     pass
 
-def make_API_request(endpoint: str, method: str="GET", body: Dict[str, str]=None) -> Any:
+def make_API_request(endpoint: str,
+                     method: str="GET",
+                     body: Optional[Dict[str, str]]=None,
+                     params: Optional[Dict[str, str]]=None) -> Any:
     headers = {'Authorization': 'Token ' + api_key}
     if method == "GET":
-        r = requests.get(API_BASE_URL + endpoint, headers=headers)
+        r = requests.get(API_BASE_URL + endpoint, headers=headers, params=params)
     elif method == "POST":
-        r = requests.post(API_BASE_URL + endpoint, headers=headers, json=body)
+        r = requests.post(API_BASE_URL + endpoint, headers=headers, params=params, json=body)
     if r.status_code == 200:
         return r.json()
     elif r.status_code == 401 and 'error' in r.json() and r.json()['error']  == "Invalid API Authentication":
@@ -40,62 +42,63 @@ def make_API_request(endpoint: str, method: str="GET", body: Dict[str, str]=None
         logging.error('Error make API request, code ' + str(r.status_code) + '. json: ' + r.json())
         raise UnspecifiedProblemException()
 
-def api_noop() -> Any:
-    return make_API_request("/noop")
+def api_noop() -> None:
+    make_API_request("/noop")
 
-def api_list_team() -> Any:
+def api_list_team() -> List[Dict[str, str]]:
     return make_API_request("/teams")
 
-def api_show_team(hash_id: str) -> Any:
+def api_show_team(hash_id: str) -> Dict[str, str]:
     return make_API_request("/teams/{}".format(hash_id))
 
+# NOTE: This function is not currently used
 def api_show_users(hash_id: str) -> Any:
     return make_API_request("/teams/{}/members".format(hash_id))
 
-def api_list_entries(team_id: str=None) -> Any:
+def api_list_entries(team_id: Optional[str]=None) -> List[Dict[str, Any]]:
     if team_id:
-        return make_API_request("/entries?team_id={}".format(team_id))
+        return make_API_request("/entries", params=dict(team_id=team_id))
     else:
-        return make_API_request("/entries".format(team_id))
+        return make_API_request("/entries")
 
-def api_create_entry(body: str, team_id: str) -> Any:
+def api_create_entry(body: str, team_id: str) -> Dict[str, Any]:
     return make_API_request("/entries", "POST", {"body": body, "team_id": team_id})
 
-def list_steams() -> str:
-    data = api_list_team()
-    response = "Teams:\n"
-    for team in data:
-        response += " * " + team['name'] + "\n"
-    return response
+def list_teams() -> str:
+    response = ["Teams:"] + [" * " + team['name'] for team in api_list_team()]
+    return "\n".join(response)
 
 def get_team_hash(team_name: str) -> str:
-    data = api_list_team()
-    for team in data:
+    for team in api_list_team():
         if team['name'].lower() == team_name.lower() or team['hash_id'] == team_name:
             return team['hash_id']
     raise TeamNotFoundException(team_name)
 
 def team_info(team_name: str) -> str:
     data = api_show_team(get_team_hash(team_name))
-    response = "Team Name: " + data['name'] + "\n"
-    response += "ID: `" + data['hash_id'] + "`\n"
-    response += "Created at: " + data['created_at'] + "\n"
-    return response
+    return "\n".join(["Team Name: {name}",
+                      "ID: `{hash_id}`",
+                      "Created at: {created_at}"]).format(**data)
 
 def entries_list(team_name: str) -> str:
     if team_name:
         data = api_list_entries(get_team_hash(team_name))
-        response = "Entries for " + team_name + ":\n"
+        response = "Entries for {}:".format(team_name)
     else:
         data = api_list_entries()
-        response = "Entries for all teams:\n"
+        response = "Entries for all teams:"
     for entry in data:
-        response += " * " + entry['body_formatted'] + "\n"
-        response += "  * Created at: " + entry['created_at'] + "\n"
-        response += "  * Status: " + entry['status'] + "\n"
-        response += "  * User: " + entry['user']['full_name'] + "\n"
-        response += "  * Team: " + entry['team']['name'] + "\n"
-        response += "  * ID: " + entry['hash_id'] + "\n"
+        response += "\n".join(
+            ["",
+             " * {body_formatted}",
+             "  * Created at: {created_at}",
+             "  * Status: {status}",
+             "  * User: {username}",
+             "  * Team: {teamname}",
+             "  * ID: {hash_id}"
+             ]).format(username=entry['user']['full_name'],
+                       teamname=entry['team']['name'],
+                       **entry)
     return response
 
 def create_entry(message: str) -> str:
@@ -177,18 +180,16 @@ Below are some of the commands you can use, and what they do.
     new entry `something` for the product team.
         ''' + default_team_message
 
-    def handle_message(self, message: Any, bot_handler: Any) -> None:
+    def handle_message(self, message: Dict[str, Any], bot_handler: Any) -> None:
         bot_handler.send_reply(message, self.get_response(message))
 
-    def get_response(self, message: Any) -> str:
+    def get_response(self, message: Dict[str, Any]) -> str:
         message_content = message['content'].strip().split()
-        if message_content == "":
-            return ""
         reply = ""
         try:
             command = " ".join(message_content[:2])
             if command in ["teams list", "list teams"]:
-                reply = list_steams()
+                reply = list_teams()
             elif command in ["teams info", "team info"]:
                 if len(message_content) > 2:
                     reply = team_info(" ".join(message_content[2:]))

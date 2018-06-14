@@ -1,6 +1,6 @@
 # See readme.md for instructions on running this code.
 
-from typing import Any, List
+from typing import Any, List, Dict
 import requests
 
 class BaremetricsHandler(object):
@@ -46,14 +46,20 @@ class BaremetricsHandler(object):
         Version 1.0
         '''
 
-    def handle_message(self, message: Any, bot_handler: Any) -> None:
-        message['content'] = message['content'].strip()
+    def handle_message(self, message: Dict[str, Any], bot_handler: Any) -> None:
+        content = message['content'].strip().split()
 
-        if message['content'].lower() == 'help':
+        if content == []:
+            bot_handler.send_reply(message, 'No Command Specified')
+            return
+
+        content[0] = content[0].lower()
+
+        if content == ['help']:
             bot_handler.send_reply(message, self.usage())
             return
 
-        if message['content'].lower() == 'list-commands':
+        if content == ['list-commands']:
             response = '**Available Commands:** \n'
             for command, description in zip(self.commands, self.descriptions):
                 response += ' - {} : {}\n'.format(command, description)
@@ -61,36 +67,32 @@ class BaremetricsHandler(object):
             bot_handler.send_reply(message, response)
             return
 
-        if message['content'] == '':
-            bot_handler.send_reply(message, 'No Command Specified')
-            return
-
-        response = self.generate_response(message['content'])
+        response = self.generate_response(content)
         bot_handler.send_reply(message, response)
 
-    def generate_response(self, command: str) -> str:
+    def generate_response(self, commands: List[str]) -> str:
         try:
-            if command.lower() == 'account-info':
+            instruction = commands[0]
+
+            if instruction == 'account-info':
                 return self.get_account_info()
 
-            if command.lower() == 'list-sources':
+            if instruction == 'list-sources':
                 return self.get_sources()
 
-            part_commands = command.split()
-
             try:
-                if part_commands[0].lower() == 'list-plans':
-                    return self.get_plans(part_commands[1])
+                if instruction == 'list-plans':
+                    return self.get_plans(commands[1])
 
-                if part_commands[0].lower() == 'list-customers':
-                    return self.get_customers(part_commands[1])
+                if instruction == 'list-customers':
+                    return self.get_customers(commands[1])
 
-                if part_commands[0].lower() == 'list-subscriptions':
-                    return self.get_subscriptions(part_commands[1])
+                if instruction == 'list-subscriptions':
+                    return self.get_subscriptions(commands[1])
 
-                if part_commands[0].lower() == 'create-plan':
-                    if len(part_commands) == 8:
-                        return self.create_plan(part_commands[1:])
+                if instruction == 'create-plan':
+                    if len(commands) == 8:
+                        return self.create_plan(commands[1:])
                     else:
                         return 'Invalid number of arguments.'
 
@@ -108,12 +110,13 @@ class BaremetricsHandler(object):
         account_data = account_response.json()
         account_data = account_data['account']
 
-        response = '**Your account information:** \n'
-        response += 'Id: {id}\n'.format(id=account_data['id'])
-        response += 'Company: {company}\n'.format(company=account_data['company'])
-        response += 'Default Currency: {currency_name}'.format(currency_name=account_data['default_currency']['name'])
+        template = ['**Your account information:**',
+                    'Id: {id}',
+                    'Company: {company}',
+                    'Default Currency: {currency}']
 
-        return response
+        return "\n".join(template).format(currency=account_data['default_currency']['name'],
+                                          **account_data)
 
     def get_sources(self) -> str:
         url = 'https://api.baremetrics.com/v1/sources'
@@ -124,9 +127,9 @@ class BaremetricsHandler(object):
 
         response = '**Listing sources:** \n'
         for index, source in enumerate(sources_data):
-            response += '{}.ID: {}\nProvider: {}\nProvider ID: {}\n\n'.format(index + 1, source['id'],
-                                                                              source['provider'],
-                                                                              source['provider_id'])
+            response += ('{_count}.ID: {id}\n'
+                         'Provider: {provider}\n'
+                         'Provider ID: {provider_id}\n\n').format(_count=index + 1, **source)
 
         return response
 
@@ -137,18 +140,19 @@ class BaremetricsHandler(object):
         plans_data = plans_response.json()
         plans_data = plans_data['plans']
 
-        template = '{}.Name: {}\nActive: {}\nInterval: {}\nInterval Count: {}\nAmounts: \n'
-        response = '**Listing plans:** \n'
+        template = '\n'.join(['{_count}.Name: {name}',
+                              'Active: {active}',
+                              'Interval: {interval}',
+                              'Interval Count: {interval_count}',
+                              'Amounts:'])
+        response = ['**Listing plans:**']
         for index, plan in enumerate(plans_data):
-            response += template.format(index + 1, plan['name'], plan['active'], plan['interval'],
-                                        plan['interval_count'])
+            response += ([template.format(_count=index + 1, **plan)] +
+                         [' - {amount} {currency}'.format(**amount)
+                          for amount in plan['amounts']] +
+                         [''])
 
-            for amount in plan['amounts']:
-                response += ' - {} {}\n'.format(amount['amount'], amount['currency'])
-
-            response += '\n'
-
-        return response
+        return '\n'.join(response)
 
     def get_customers(self, source_id: str) -> str:
         url = 'https://api.baremetrics.com/v1/{}/customers'.format(source_id)
@@ -157,18 +161,22 @@ class BaremetricsHandler(object):
         customers_data = customers_response.json()
         customers_data = customers_data['customers']
 
-        template = '{}.Name: {}\nDisplay Name: {}\nOID: {}\nActive: {}\nEmail: {}\nNotes: {}\nCurrent Plans: \n'
-        response = '**Listing customers:** \n'
+        # FIXME BUG here? mismatch of name and display name?
+        template = '\n'.join(['{_count}.Name: {display_name}',
+                              'Display Name: {name}',
+                              'OID: {oid}',
+                              'Active: {is_active}',
+                              'Email: {email}',
+                              'Notes: {notes}',
+                              'Current Plans:'])
+        response = ['**Listing customers:**']
         for index, customer in enumerate(customers_data):
-            response += template.format(index + 1, customer['display_name'], customer['name'], customer['oid'],
-                                        customer['is_active'], customer['email'], customer['notes'])
+            response += ([template.format(_count=index + 1, **customer)] +
+                         [' - {name}'.format(**plan)
+                          for plan in customer['current_plans']] +
+                         [''])
 
-            for plan in customer['current_plans']:
-                response += ' - {}\n'.format(plan['name'])
-
-            response += '\n'
-
-        return response
+        return '\n'.join(response)
 
     def get_subscriptions(self, source_id: str) -> str:
         url = 'https://api.baremetrics.com/v1/{}/subscriptions'.format(source_id)
@@ -177,21 +185,24 @@ class BaremetricsHandler(object):
         subscriptions_data = subscriptions_response.json()
         subscriptions_data = subscriptions_data['subscriptions']
 
-        template = '{}.Customer Name: {}\nCustomer Display Name: {}\nCustomer OID: {}\nCustomer Email: {}\n' \
-                   'Active: {}\nPlan Name: {}\nPlan Amounts: \n'
-        response = '**Listing subscriptions:** \n'
+        template = '\n'.join(['{_count}.Customer Name: {name}',
+                              'Customer Display Name: {display_name}',
+                              'Customer OID: {oid}',
+                              'Customer Email: {email}',
+                              'Active: {_active}',
+                              'Plan Name: {_plan_name}',
+                              'Plan Amounts:'])
+        response = ['**Listing subscriptions:**']
         for index, subscription in enumerate(subscriptions_data):
-            response += template.format(index + 1, subscription['customer']['name'],
-                                        subscription['customer']['display_name'],
-                                        subscription['customer']['oid'], subscription['customer']['email'],
-                                        subscription['active'], subscription['plan']['name'])
+            response += ([template.format(_count=index + 1,
+                                          _active=subscription['active'],
+                                          _plan_name=subscription['plan']['name'],
+                                          **subscription['customer'])] +
+                         [' - {amount} {symbol}'.format(**amount)
+                          for amount in subscription['plan']['amounts']] +
+                         [''])
 
-            for amount in subscription['plan']['amounts']:
-                response += ' - {} {}\n'.format(amount['amount'], amount['symbol'])
-
-            response += '\n'
-
-        return response
+        return '\n'.join(response)
 
     def create_plan(self, parameters: List[str]) -> str:
         data_header = {

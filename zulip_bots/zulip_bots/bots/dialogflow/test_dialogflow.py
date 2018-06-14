@@ -1,21 +1,12 @@
-from zulip_bots.test_lib import BotTestCase, read_bot_fixture_data
+from zulip_bots.test_lib import BotTestCase, DefaultTests, read_bot_fixture_data
 
 from contextlib import contextmanager
 
 from unittest.mock import patch
 
-from typing import Any, ByteString
+from typing import Iterator, ByteString
 
 import json
-
-class MockTextRequest():
-    def __init__(self) -> None:
-        self.session_id = ""
-        self.query = ""
-        self.response = ""
-
-    def getresponse(self) -> Any:
-        return MockHttplibRequest(self.response)
 
 class MockHttplibRequest():
     def __init__(self, response: str) -> None:
@@ -24,8 +15,17 @@ class MockHttplibRequest():
     def read(self) -> ByteString:
         return json.dumps(self.response).encode()
 
+class MockTextRequest():
+    def __init__(self) -> None:
+        self.session_id = ""
+        self.query = ""
+        self.response = ""
+
+    def getresponse(self) -> MockHttplibRequest:
+        return MockHttplibRequest(self.response)
+
 @contextmanager
-def mock_dialogflow(test_name: str, bot_name: str) -> Any:
+def mock_dialogflow(test_name: str, bot_name: str) -> Iterator[None]:
     response_data = read_bot_fixture_data(bot_name, test_name)
     try:
         df_request = response_data['request']
@@ -40,7 +40,7 @@ def mock_dialogflow(test_name: str, bot_name: str) -> Any:
         mock_text_request.return_value = request
         yield
 
-class TestDialogFlowBot(BotTestCase):
+class TestDialogFlowBot(BotTestCase, DefaultTests):
     bot_name = 'dialogflow'
 
     def _test(self, test_name: str, message: str, response: str) -> None:

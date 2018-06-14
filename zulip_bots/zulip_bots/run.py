@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
-from __future__ import print_function
-from __future__ import absolute_import
 
 import logging
 import argparse
 import sys
 import os
-from types import ModuleType
-from importlib import import_module
 from os.path import basename, splitext
 
-if False:
-    from typing import Any, Optional, Text
+from typing import Any, Optional, Text
 
 from zulip_bots.lib import (
     run_message_handler_for_bot,
@@ -22,8 +17,8 @@ from zulip_bots.provision import provision_bot
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-def import_module_from_source(path, name=None):
-    # type: (Text, Optional[Text]) -> Any
+
+def import_module_from_source(path: Text, name: Optional[Text]=None) -> Any:
     if not name:
         name = splitext(basename(path))[0]
 
@@ -43,8 +38,8 @@ def import_module_from_source(path, name=None):
 
     return module
 
-def parse_args():
-    # type: () -> argparse.Namespace
+
+def parse_args() -> argparse.Namespace:
     usage = '''
         zulip-run-bot <bot_name> --config-file ~/zuliprc
         zulip-run-bot --help
@@ -80,8 +75,7 @@ def parse_args():
     return args
 
 
-def exit_gracefully_if_zulip_config_file_does_not_exist(config_file):
-    # type: (str) -> None
+def exit_gracefully_if_zulip_config_file_does_not_exist(config_file: str) -> None:
     if not os.path.exists(config_file):
         print('''
             ERROR: %s does not exist.
@@ -92,8 +86,8 @@ def exit_gracefully_if_zulip_config_file_does_not_exist(config_file):
             ''' % (config_file,))
         sys.exit(1)
 
-def exit_gracefully_if_bot_config_file_does_not_exist(bot_config_file):
-    # type: (str) -> None
+
+def exit_gracefully_if_bot_config_file_does_not_exist(bot_config_file: str) -> None:
     if bot_config_file is None:
         # This is a common case, just so succeed quietly. (Some
         # bots don't have third party configuration.)
@@ -107,8 +101,8 @@ def exit_gracefully_if_bot_config_file_does_not_exist(bot_config_file):
             ''' % (bot_config_file,))
         sys.exit(1)
 
-def main():
-    # type: () -> None
+
+def main() -> None:
     args = parse_args()
     if os.path.isfile(args.bot):
         bot_path = os.path.abspath(args.bot)
@@ -116,10 +110,24 @@ def main():
     else:
         bot_path = os.path.abspath(os.path.join(current_dir, 'bots', args.bot, args.bot+'.py'))
         bot_name = args.bot
+    sys.path.insert(0, os.path.dirname(bot_path))
     if args.provision:
         provision_bot(os.path.dirname(bot_path), args.force)
 
-    lib_module = import_module_from_source(bot_path, bot_name)
+    try:
+        lib_module = import_module_from_source(bot_path, bot_name)
+    except ImportError as e:
+        req_path = os.path.join(os.path.dirname(bot_path), "requirements.txt")
+        with open(req_path) as fp:
+            deps_list = fp.read()
+
+        dep_err_msg = ("ERROR: The following dependencies for the {bot_name} bot are not installed:\n\n"
+                       "{deps_list}\n"
+                       "If you'd like us to install these dependencies, run:\n"
+                       "    zulip-run-bot {bot_name} --provision")
+        print(dep_err_msg.format(bot_name=bot_name, deps_list=deps_list))
+        sys.exit(1)
+
     if lib_module is None:
         print("ERROR: Could not load bot module. Exiting now.")
         sys.exit(1)
