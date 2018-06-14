@@ -25,7 +25,7 @@ class FedorestdHandler(object):
         """ Return the current day of week (0-6), the current week (0-51) and the current year"""
         today = datetime.today()
         day = today.weekday()
-        day = 2 # TODO : remove, test purpose only
+        #day = 2 # TODO : remove, test purpose only
         week = today.isocalendar()[1]
         year = today.year
         return (day, week, year)
@@ -159,6 +159,8 @@ class FedorestdHandler(object):
             return "C'est le weekend aujourd'hui..."
 
         today_menu_path = BASE_DAILY_TXT_PATH.format(year, week, day)
+
+        print(today_menu_path)
 
         #if not os.path.exists(today_menu_path):
         FedorestdHandler.parse_week_menu()
